@@ -2,9 +2,9 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.rmi.*;
-import javax.crypto.Cipher;
+/*import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
+import javax.crypto.spec.SecretKeySpec;*/
 
 public class ServerTCP {
 	public static void main(String[] args) throws IOException {
@@ -18,8 +18,8 @@ public class ServerTCP {
 			try {
 				s = socket.accept();
 				System.out.println("Novo cliente conectado!");
-				DataInputStream input = new DataInputStream(s.getInputStream());
-				DataOutputStream output = new DataOutputStream(s.getOutputStream());
+				ObjectInputStream input = new ObjectInputStream(s.getInputStream());
+				ObjectOutputStream output = new ObjectOutputStream(s.getOutputStream());
 
 				System.out.println("Atribuindo nova thread para o cliente.");
 
@@ -41,15 +41,18 @@ public class ServerTCP {
 }
 
 class ClientHandler extends Thread {
-	private DataInputStream input;
-	private DataOutputStream output;
+	private ObjectInputStream input;
+	private ObjectOutputStream output;
 	final Socket socket;
 	String root = "";
 	String passRoot = "";
 	String pass;
 	String keyPass = "vkrkq9VVjxuRt5vZ";
+	Boolean connection = true;
+	String message;
+	Pacote pacote = new Pacote();
 
-	public ClientHandler(Socket socket, DataInputStream input, DataOutputStream output) {
+	public ClientHandler(Socket socket, ObjectInputStream input, ObjectOutputStream output) {
 		this.socket = socket;
 		this.input = input;
 		this.output = output;
@@ -57,180 +60,285 @@ class ClientHandler extends Thread {
 
 	@Override
 	public void run() {
-		String received;
+
 		this.root = "isa";
 		this.passRoot = "useroot";
+
+		while(this.connection) { 
+			String received;
+			try {
+				message = "Login Server FTP:\n> (root/login) : ";
+				output.writeObject(new Pacote(message));
+
+				received = ((Pacote)input.readObject()).getMessage().toLowerCase();
+
+				switch(received) {
+				case "exit":
+					encerraConexao();
+					this.connection = false;
+					break;
+
+				case "login":
+					rotinaLogin();
+					this.connection = false;
+					break;
+
+				case "root":
+					rotinaRoot();
+					this.connection = false;
+					break;
+
+				default:
+					message = "Entrada " + received + " Inválida.";
+					output.writeObject(new Pacote(message));
+					break;
+				} 
+			}catch (IOException e1) {
+				this.connection = false;
+				//e1.printStackTrace();
+			} catch (ClassNotFoundException e1) {
+				e1.printStackTrace();
+			}
+		}
+	}
+
+	private void rotinaLogin() throws IOException, ClassNotFoundException {
+		String opt;
+		String user;
 		Map<String, String> comandos = new HashMap<String, String>();
+
 		preencheComandos(comandos);
 
-		try {
-			output.writeUTF("O que você quer? [Login | root]:\n" + "Digite Exit para terminar a conexão.");
-			received = input.readUTF();
-			if (received.equals("Exit")) {
-				encerraConexao();
-			}else if (received.equals("Login")) {
-				rotinaLogin();
-			}else if(received.equals("root")){
-				rotinaRoot();
-			}else{
-				output.writeUTF("Entrada inválida.");
+		message ="> user: ";
+		output.writeObject(new Pacote(message));
+		opt = ((Pacote)input.readObject()).getMessage();
 
-			} 
-		}catch (IOException e1) {
-			e1.printStackTrace();
-		}try{
-			this.input.close();
-			this.output.close();
-		}catch(IOException e){
+		if(opt.equalsIgnoreCase("Exit")) {
+			encerraConexao();
+			this.connection = false;
+			return;
+		}
+
+
+		user = opt;
+		message = user + " > senha: ";
+		output.writeObject(new Pacote(message));
+
+		opt = ((Pacote)input.readObject()).getMessage();
+
+		if(opt.equalsIgnoreCase("Exit")) {
+			encerraConexao();
+			this.connection = false;
+			return;
+		}
+
+		//pass = criptografaString(opt);
+		pass = opt;
+		ClientSenha client = new ClientSenha();
+
+		boolean result;
+		try {
+			result = client.verificaSenha(user, pass, root, passRoot);
+			if(result == true) {
+				gerenciaArquivos(comandos, user);
+			}else {
+				message = "Não foi possível realizar o seu login. Verifique a senha e tente novamente!\n>";
+				output.writeObject(new Pacote(message));
+			}
+		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
 	}
 
-
-	private void rotinaLogin() throws IOException {
+	private void rotinaRoot() throws IOException, ClassNotFoundException{
 		String opt;
-		String user;
-		Map<String, String> comandos = new HashMap<String, String>();
 
-		preencheComandos(comandos);
-
-		output.writeUTF("Digite: [Usuário] ou Exit para terminar a conexão");
-		opt = input.readUTF();
-
-		if(opt.equalsIgnoreCase("Exit")) {
-			encerraConexao();output.writeUTF("Digite: [Usuário] ou Exit para terminar a conexão");
-			opt = input.readUTF();
-
-			if(opt.equalsIgnoreCase("Exit")) {
-				encerraConexao();
-			}
-
-			user = opt;
-			output.writeUTF("Bem vindo, " + user);
-			output.writeUTF("Digite: [Senha] ou Exit para terminar a conexão");
-			opt = input.readUTF();
-
-			if(opt.equalsIgnoreCase("Exit")) {
-				encerraConexao();
-			}
-
-			pass = criptografaString(opt);
-			ClientSenha client = new ClientSenha();
-
-			boolean result;
-			try {
-				result = client.verificaSenha(user, pass, root, passRoot);
-				if(result == true) {
-					gerenciaArquivos(comandos, user);
-				}else {
-					output.writeUTF("Não foi possível realizar o seu login. Verifique a senha e tente novamente!");
-				}
-			} catch (ClassNotFoundException e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
-	private void rotinaRoot() throws IOException {
-		String opt;
-		String user;
 		Map<String, String> comandos = new HashMap<String, String>();
 		preencheComandos(comandos);
 
-		output.writeUTF("Iniciando conexão segura...\nDigite [Senha] ou Exit para terminar a conexão");
-		opt = input.readUTF();
+		message = "Iniciando conexão segura...\nroot> senha: ";
+		output.writeObject(new Pacote(message));
+		opt = ((Pacote)input.readObject()).getMessage().toLowerCase();
 
-		if(opt.equalsIgnoreCase("Exit")) {
+
+		if(opt.equals("exit")) {
 			encerraConexao();
+			this.connection = false;
+			return;
 		}
 
-		pass = criptografaString(opt);
+		//pass = criptografaString(opt);
+		pass = opt;
+		
 		ClientSenha client = new ClientSenha();
 		boolean result;
 		try {
 			result = client.verificaSenha(root, pass, root, passRoot);
-			if(result == true) {
-				output.writeUTF("Escolha [Adicionar Usuário | Excluir Usuário | Exit]");
-				opt = input.readUTF();
+			if(result) {
+				message = "root> (useradd | userrm | exit): ";
+				output.writeObject(new Pacote(message));
+				while (result) {
+					opt = ((Pacote)input.readObject()).getMessage();
 
-				if(opt.equalsIgnoreCase("Adicionar")) {
-					output.writeUTF("Escolha: [Usuário | Exit]");
-					opt = input.readUTF();
-					user = opt;
-					output.writeUTF("O usuário escolhido foi: " + user +  "\nEscolha: [Senha | Exit]");
-					String pass = input.readUTF();
-					pass = criptografaString(pass);
-					result = client.addUser(opt, pass, root, passRoot);
-					if(result == true) {
-						output.writeUTF("Usuário adicionado com sucesso!");
+					if(opt.equalsIgnoreCase("useradd")) {
+						message = "root> (usuario e senha): ";
+						output.writeObject(new Pacote(message));
+						opt = ((Pacote)input.readObject()).getMessage();
+						String[] entries = opt.split(" ");
+						//entries[1] = criptografaString(entries[1]);
+						result = client.addUser(entries[0], entries[1], root, passRoot);
+						if(result) {
+							message = "Usuário adicionado com sucesso!\nroot> (useradd | userrm | exit):  ";
+							output.writeObject(new Pacote(message));
+						}else {
+							message = "Usuário não pôde ser adicionado!\nroot> (useradd | userrm | exit): ";
+							output.writeObject(new Pacote(message));
+						}
+
+					}else if(opt.equalsIgnoreCase("userrm")) {
+						message = "root> (usuario e senha): ";
+						output.writeObject(new Pacote(message));
+						opt = ((Pacote)input.readObject()).getMessage();
+						String[] entries = opt.split(" ");
+						//entries[1] = criptografaString(entries[1]);
+						result = client.removeUser(entries[0], entries[1], root, passRoot);
+						if(result) {
+							message = "Usuário adicionado com sucesso!\nroot> (useradd | userrm | exit): ";
+							output.writeObject(new Pacote(message));
+						}else {
+							message = "Usuário não pôde ser adicionado!\nroot> (useradd | userrm | exit): ";
+							output.writeObject(new Pacote(message));
+						}
+					}else if(opt.equalsIgnoreCase("exit")) {
+						encerraConexao();
+						result = false;
+						this.connection = false;
 					}else {
-						output.writeUTF("Usuário não pôde ser adicionado!");
+						message = "Comando " +opt+ " inválido!\nroot> (useradd | userrm | exit): ";
+						output.writeObject(new Pacote(message));
 					}
-				}else if(opt.equalsIgnoreCase("Excluir")) {
-					output.writeUTF("Escolha: [Usuário | Exit]");
-					opt = input.readUTF();
-					output.writeUTF("Você escolheu: " + opt +  "\nEscolha: [Senha | Exit]");
-					pass = input.readUTF();
-					pass = criptografaString(pass);
-					result = client.addUser(opt, pass, root, passRoot);
-					if(result == true) {
-						output.writeUTF("Usuário adicionado com sucesso!");
-					}else {
-						output.writeUTF("Usuário não pôde ser adicionado!");
-					}
-				}else if(opt.equalsIgnoreCase("Exit")) {
-					encerraConexao();
-				}else {
-					output.writeUTF("Comando inválido!");
 				}
-				gerenciaArquivos(comandos, root);
 			}else {
-				output.writeUTF("Não foi possível realizar o seu login. Verifique a senha e tente novamente!");
+				message = "Não foi possível realizar o seu login. Verifique a senha e tente novamente!\n>";
+				output.writeObject(new Pacote(message));
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
-		}	
+		}
+		return;
 	}
 
-	private void gerenciaArquivos(Map<String, String> comandos, String user) throws IOException {
+	private void gerenciaArquivos(Map<String, String> comandos, String user) throws IOException, ClassNotFoundException {
 		ClienteArquivos clientArqs = new ClienteArquivos();
 		boolean result;
-		
-		output.writeUTF("Escolha [help | Digite seu comando | Exit]\n");
-		String received = input.readUTF();
-		
-		switch(received) {
-		case "Exit":
-			try {
-				encerraConexao();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			break;
-		case "help":
-			comandos.forEach((k, v) -> System.out.println("Comando: " + k + "Realiza: " + v));
-			break;
-		case "mkdir":
-			output.writeUTF("Escolha [Nome do diretório| Exit]\n");
-			received = input.readUTF();
-			
-			result = clientArqs.criaPasta(received, user);
-			if(result == true) {
-				output.writeUTF("Pasta criada com sucesso!");
+		String opt; 
+		clientArqs.entraPasta(user, "");
+		message = user + " > (help|comando|Exit): ";
+		output.writeObject(new Pacote(message));
+		Boolean usando = true;
+		while (usando) {
+			pacote = (Pacote)input.readObject();
+			opt = (pacote).getMessage().toLowerCase();
+			String[] entries = opt.split(" ");
+
+			switch(entries[0]) { 
+			case "Exit":
+				try {
+					encerraConexao();
+					this.connection = false;
+					usando = false;
+					return;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 				break;
-			}else {
-				output.writeUTF("Não foi possível criar a pasta. Verifique as credenciais e tente novamente.");
+			case "help":
+				message = "";
+				comandos.forEach((k, v) -> message += "Comando: " + k + "\t Realiza: " + v + "\n");
+				message += user + " > (help|comando|Exit): ";
+				output.writeObject(new Pacote(message));
 				break;
-			}
-		case "rmdir":
-			output.writeUTF("Escolha [Nome do diretório| Exit]\n");
-			received = input.readUTF();
-			result = clientArqs.removePasta(received, user);
-			if(result == true) {
-				output.writeUTF("Pasta emovida com sucesso!");
-				break;
-			}else {
-				output.writeUTF("Não foi possível criar a pasta. Verifique as credenciais e tente novamente.");
+			case "mkdir":
+				result = clientArqs.criaPasta(entries[1]);
+				if(result == true) {
+					message = "Pasta criada com sucesso!\n" + user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}else{
+					message = "Não foi possível criar a pasta.\n" +user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}
+			case "rmdir":
+				result = clientArqs.removePasta(entries[1]);
+				if(result == true) {
+					message = "Pasta emovida com sucesso!\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}else{
+					message = "Não foi possível remover a pasta.\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}
+			case "ls":
+				message = clientArqs.listaArquivos();
+				if(message != "") {
+					message += user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}else{
+					message = "Não foi possível visualizar a pasta.\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}
+			case "put":			
+				System.out.println(pacote.getArquivo());
+				result = clientArqs.put(entries[1], pacote.getArquivo());
+				if(result == true) {
+					message = "Inserido com sucesso!\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}else{
+					message = "Não foi possível inserir na pasta. Verifique as credenciais e tente novamente.\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}
+			case "get":
+				File arq = clientArqs.get(entries[1], user);
+				if(arq.isFile()) {
+					message = "Retornado com sucesso!\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}else{
+					message = "Não foi possível encontrar na pasta. Verifique as credenciais e tente novamente.\n"+user + " > (help|comando|Exit): ";
+					output.writeObject(new Pacote(message));
+					break;
+				}
+			case "cd":
+				if(entries[1].contains("home")) {
+					if(clientArqs.entraPasta("home", user)) {
+						message = "Retornado com sucesso!\n"+user + " > (help|comando|Exit): ";
+						output.writeObject(new Pacote(message));
+						break;
+					}else{
+						message = "Não foi possível encontrar na pasta. Verifique as credenciais e tente novamente.\n"+user + " > (help|comando|Exit): ";
+						output.writeObject(new Pacote(message));
+						break;
+					}
+				} else {
+					if(clientArqs.entraPasta(entries[1], user)) {
+						message = "Retornado com sucesso!\n"+user + " > (help|comando|Exit): ";
+						output.writeObject(new Pacote(message));
+						break;
+					}else{
+						message = "Não foi possível encontrar na pasta. Verifique as credenciais e tente novamente.\n"+user + " > (help|comando|Exit): ";
+						output.writeObject(new Pacote(message));
+						break;
+					}
+				}
+			default:
+				message = "Comando inválido!\n"+user + " > (help|comando|Exit): ";
+				output.writeObject(new Pacote(message));
 				break;
 			}
 		}
@@ -253,7 +361,7 @@ class ClientHandler extends Thread {
 		System.out.println("Conexão encerrada!");
 	}
 
-	private String criptografaString(String pass){
+	/*private String criptografaString(String pass){
 		SecretKey key = new SecretKeySpec(keyPass.getBytes(), "AES");
 		String fs = new String("false");
 
@@ -267,7 +375,23 @@ class ClientHandler extends Thread {
 		}
 
 		return fs;
-	}   
+	}  
+
+	private String descriptografaString(String pass){
+		SecretKey key = new SecretKeySpec(keyPass.getBytes(), "AES");
+		String fs = new String("false");
+
+		try{
+			Cipher cipher = Cipher.getInstance("AES");
+			cipher.init(Cipher.DECRYPT_MODE, key);
+			byte[] msg = cipher.doFinal(pass.getBytes());
+			String senha = new String(msg);
+			return senha;
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+		return fs;
+	}*/
 }
 
 class ClientSenha{
@@ -313,11 +437,11 @@ class ClienteArquivos {
 	public boolean entraPasta(String caminho, String user) throws IOException{
 		return msi.entraPasta(caminho, user);
 	}
-	public boolean listaArquivos(String caminho) throws IOException{
-		return msi.listaArquivos(caminho);
+	public String listaArquivos() throws IOException{
+		return msi.listaArquivos();
 	}
-	public boolean put(String caminho, String arquivo) throws IOException{
-		return msi.put(caminho, arquivo);
+	public boolean put(String nome, byte[] arquivo) throws IOException{
+		return msi.put(nome, arquivo);
 	}
 	public File get(String caminho, String arquivo) throws IOException{
 		return msi.get(caminho, arquivo);
@@ -326,7 +450,7 @@ class ClienteArquivos {
 		return msi.criaPasta(user);
 	}
 	public boolean removePasta(String user) throws IOException{
-		return msi.criaPasta(user);
+		return msi.removePasta(user);
 	}
 	private InterfaceArquivos msi;
 }

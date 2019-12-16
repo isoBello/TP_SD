@@ -98,7 +98,7 @@ public class ServerSenha extends UnicastRemoteObject implements InterfaceSenha {
 
 				System.out.println("O usuário foi removido!");
 				ClientArqs client = new ClientArqs();
-				client.removePasta(user);
+				client.removePasta("");
 				return true;
 			} catch (SQLException ex) {
 				Logger lgr = Logger.getLogger(ServerSenha.class.getName());

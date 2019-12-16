@@ -9,12 +9,16 @@ public class ServerArquivos extends UnicastRemoteObject implements InterfaceArqu
 	private String caminho = "home/";
 	
 	public ServerArquivos() throws RemoteException{
+		this.caminho = "home/";
+		File pasta = new File(caminho); 
+		if(!pasta.exists())
+			pasta.mkdir();
         System.out.println("Servidor de arquivos iniciando...");
     }
 	
-	public boolean criaPasta(String user) throws IOException{
-		this.caminho = caminho + user;
-        File pasta = new File(caminho);  
+	public boolean criaPasta(String nome) throws IOException{
+		String path = caminho + "/" + nome;
+        File pasta = new File(path);  
         if (pasta.mkdir()) {   
             return true;
         } 
@@ -24,8 +28,8 @@ public class ServerArquivos extends UnicastRemoteObject implements InterfaceArqu
 	}
 	
 	public boolean criaPasta(String nome, String user) throws IOException {
-		this.caminho = caminho + user + nome;
-        File pasta = new File(caminho); 
+		String path = caminho + "/" +  user + "/" + nome;
+        File pasta = new File(path); 
         if (pasta.mkdir()) {   
             return true;
         } 
@@ -35,37 +39,39 @@ public class ServerArquivos extends UnicastRemoteObject implements InterfaceArqu
 	}
 	
 	public boolean entraPasta(String nome, String user) throws IOException{
-		this.caminho = caminho + user + nome;
-		File pasta = new File(caminho); 
-		this.caminho = pasta.getPath();
-		return true;
+		if (nome.equals("..")) {
+			caminho = caminho.substring(0, caminho.lastIndexOf("/"));
+			System.out.println(caminho);
+			return true;
+		} else {
+			this.caminho = caminho + "/" + nome;
+			File pasta = new File(caminho); 
+			this.caminho = pasta.getPath();
+			System.out.println(caminho);
+			return true;
+		}
 	}
 	
-	public boolean listaArquivos(String opt) throws IOException{
-		if(caminho != opt) {
-			this.caminho = opt;
-		}
-		
+	public String listaArquivos() throws IOException{
+
 		File pasta = new File(caminho);
 		String[]entries = pasta.list();
-		
+		String retorno = "";
 		if(entries.length > 0) {
 			for(String s: entries){
-			    System.out.println(s);
-			    return true;
-			}	
+				retorno += s +"\n";
+			}
 		}
-		return false;
+		return retorno;
 	}
 	
-	public boolean put(String opt, String arquivo) throws IOException{
-		if(caminho != opt) {
-			this.caminho = opt + arquivo;
-		}
-		
-		File f = new File(caminho);
-		f.getParentFile().mkdirs(); 
+	public boolean put(String nome, byte[] arquivo) throws IOException{
+		File f = new File(caminho + "/" + nome);
+		FileOutputStream fw = new FileOutputStream(f);
+		fw.write(arquivo);
+		f.getParentFile().mkdirs();
 		f.createNewFile();
+		fw.close();
 		return true;
 	}
 	
@@ -91,26 +97,11 @@ public class ServerArquivos extends UnicastRemoteObject implements InterfaceArqu
 		return null;
 	}
 	
-	public boolean removePasta(String nome, String user) throws IOException{
-		this.caminho = caminho + user + nome;
-        File pasta = new File(caminho); 
-        
-		String[]entries = pasta.list();
-		
-		if(entries.length > 0) {
-			for(String s: entries){
-			    File currentFile = new File(pasta.getPath(),s);
-			    currentFile.delete();
-			}	
-		}
-		
-		pasta.delete();
-		return true;
-	}	
 	
-	public boolean removePasta(String user) throws IOException{
-		this.caminho = caminho + user;
-        File pasta = new File(caminho); 
+	public boolean removePasta(String nome) throws IOException{
+		String path = caminho + "/" +nome;
+		System.out.println("remove: " + path);
+        File pasta = new File(path); 
         
 		String[]entries = pasta.list();
 		
@@ -119,7 +110,7 @@ public class ServerArquivos extends UnicastRemoteObject implements InterfaceArqu
 			    File currentFile = new File(pasta.getPath(),s);
 			    currentFile.delete();
 			}	
-		}
+		} 
 		
 		pasta.delete();
 		return true;
